@@ -5,14 +5,18 @@ import { useEffect, useState } from "react";
 import AddUrlModal from "./AddUrlModal";
 import { usePathname, useRouter } from "next/navigation";
 import { useProjectStore } from "@/store/projectStore";
+import Link from "next/link";
 
 export default function Sidebar() {
   const [open, setOpen] = useState(false);
   const { projects, setProjects } = useProjectStore();
   const router = useRouter();
   const pathname = usePathname();
+    const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setMounted(true);
     const fetchProjects = async () => {
       try {
         const res = await fetch("/api/project");
@@ -31,13 +35,22 @@ export default function Sidebar() {
     fetchProjects();
   }, []);
 
+
+  if (!mounted) return null;
+
   return (
-    <div className="h-screen w-[260px] border-r flex flex-col justify-between cursor-pointer p-4">
+    <div className="h-screen w-[260px] border-r flex flex-col justify-between  p-4">
       {/* Top */}
       <div>
+        <Link
+          href={"/"}
+          className="w-full block bg-black text-center border cursor-pointer text-white py-2 rounded-lg mb-4"
+        >
+          Home
+        </Link>
         <button
           onClick={() => setOpen(true)}
-          className="w-full bg-black border text-white py-2 rounded-lg"
+          className="w-full bg-black border cursor-pointer text-white py-2 rounded-lg"
         >
           + Add URL
         </button>
@@ -45,15 +58,15 @@ export default function Sidebar() {
         {/* Projects list (future) */}
         <div className="mt-6 space-y-2 max-h-[400px] overflow-y-auto">
           {projects.map((project) => {
-            const isActive = pathname?.includes(project.id);
+            const isActive = pathname?.includes(project.id ?? "");
 
             return (
               <div
                 key={project.id}
                 onClick={() => router.push(`/project/${project.id}`)}
                 className={`p-2 rounded-lg cursor-pointer 
-        ${isActive ? "bg-neutral-800 text-white" : "hover:bg-neutral-600"}
-      `}
+                    ${isActive ? "bg-neutral-800 text-white" : "hover:bg-neutral-600"}
+                  `}
               >
                 {project.title}
               </div>
