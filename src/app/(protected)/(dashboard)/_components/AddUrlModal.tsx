@@ -3,6 +3,8 @@
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
 import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { useProjectStore } from "@/store/projectStore";
 
 type Props = {
   open: boolean;
@@ -12,6 +14,34 @@ type Props = {
 export default function AddUrlModal({ open, onClose }: Props) {
   const [url, setUrl] = useState("");
   const [title, setTitle] = useState("");
+  const router = useRouter();
+  const { addProject } = useProjectStore();
+
+  const handleAdd = async () => {
+  if (!title || !url) return;
+
+  try {
+    const res = await fetch("/api/project", {
+      method: "POST",
+      body: JSON.stringify({ title, url }),
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      alert(data.error);
+      return;
+    }
+
+    onClose();
+
+    addProject(data);
+    router.push(`/project/${data.id}`);
+  } catch (error) {
+    console.error(error);
+    alert("Something went wrong");
+  }
+};
 
   if (!open) return null;
 
@@ -27,15 +57,15 @@ export default function AddUrlModal({ open, onClose }: Props) {
           <Input
           type="text"
           placeholder="Enter Title"
-          value={url}
-          onChange={setUrl}
+          value={title}
+          onChange={setTitle}
         />
-        
+
           <Input
           type="text"
           placeholder="https://example.com/docs"
-          value={title}
-          onChange={setTitle}
+          value={url}
+          onChange={setUrl}
         />
         </div>
 
@@ -46,7 +76,7 @@ export default function AddUrlModal({ open, onClose }: Props) {
             Cancel
           </Button>
 
-          <Button >
+          <Button onClick={handleAdd}>
             Add
           </Button>
         </div>
