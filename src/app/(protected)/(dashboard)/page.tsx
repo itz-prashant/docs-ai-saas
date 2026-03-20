@@ -2,9 +2,7 @@
 
 const page = () => {
   return (
-    <div className='text-white'>
-      hwllo
-    </div>
+   <div></div>
   )
 }
 
