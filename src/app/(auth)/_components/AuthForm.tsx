@@ -2,6 +2,7 @@
 
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
+import { signIn } from "next-auth/react";
 import Link from "next/link";
 import { useState } from "react";
 
@@ -14,8 +15,49 @@ export default function AuthForm({ type }: Props) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
-  const handleSubmit = () => {
-    console.log(type, { email, password });
+  
+  const handleSubmit = async () => {
+    if (!email || !password) return;
+
+    try {
+      if (type === "register") {
+        const res = await fetch("/api/auth/register", {
+          method: "POST",
+          body: JSON.stringify({ email, password }),
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+          alert(data.error);
+          return;
+        }
+
+        await signIn("credentials", {
+          email,
+          password,
+          redirect: true,
+          callbackUrl: "/",
+        });
+      }
+
+      if (type === "login") {
+        const res = await signIn("credentials", {
+          email,
+          password,
+          redirect: true,
+          callbackUrl: "/",
+        });
+
+        if (res?.error) {
+          alert("Invalid credentials");
+          return;
+        }
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Something went wrong");
+    }
   };
 
   return (
