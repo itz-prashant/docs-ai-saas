@@ -11,6 +11,7 @@ type Props = {
 
 export default function AddUrlModal({ open, onClose }: Props) {
   const [url, setUrl] = useState("");
+  const [title, setTitle] = useState("");
 
   if (!open) return null;
 
@@ -21,12 +22,22 @@ export default function AddUrlModal({ open, onClose }: Props) {
           Add Documentation URL
         </h2>
 
-        <Input
+        <div className="flex flex-col space-y-4">
+
+          <Input
           type="text"
-          placeholder="https://example.com/docs"
+          placeholder="Enter Title"
           value={url}
           onChange={setUrl}
         />
+        
+          <Input
+          type="text"
+          placeholder="https://example.com/docs"
+          value={title}
+          onChange={setTitle}
+        />
+        </div>
 
         <div className="flex justify-end gap-2 mt-4">
           <Button
