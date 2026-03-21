@@ -25,12 +25,14 @@ model Project {
   id        String   @id @default(cuid())
   title     String
   url       String
+  docsLinks Json?  
   createdAt DateTime @default(now())
 
   userId String
   user   User @relation(fields: [userId], references: [id])
 
   messages Message[]
+  documents Document[]
 }
 
 model Message {
@@ -41,4 +43,12 @@ model Message {
 
   projectId String
   project   Project @relation(fields: [projectId], references: [id])
+}
+
+model Document {
+  id        String   @id @default(cuid())
+  content   String
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id])
+  createdAt DateTime @default(now())
 }

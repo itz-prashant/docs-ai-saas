@@ -1,4 +1,5 @@
 import { authOptions } from "@/lib/auth";
+import { processProject } from "@/lib/ingestion";
 import { prisma } from "@/lib/prisma";
 import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
@@ -27,6 +28,10 @@ export async function POST(req: Request) {
         userId: session.user.id,
       },
     });
+
+    if(project.id){
+      await processProject(project.id);
+    }
     return NextResponse.json(project);
   } catch (error) {
     console.error("PROJECT_CREATE_ERROR:", error);
