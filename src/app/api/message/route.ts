@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { searchDocs } from "@/lib/search";
 
 
 export async function POST(req: Request) {
@@ -48,7 +49,13 @@ export async function POST(req: Request) {
       },
     });
 
-    return NextResponse.json(message);
+    const results = await searchDocs(content, projectId);
+console.log("message",message)
+console.log("result",results)
+    return NextResponse.json({
+      message,
+      results,
+    });
   } catch (error: unknown) {
     console.error("MESSAGE_CREATE_ERROR:", error);
 

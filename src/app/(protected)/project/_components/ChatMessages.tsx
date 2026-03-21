@@ -1,13 +1,7 @@
 "use client";
 
 import { useMessageStore } from "@/store/messageStore";
-import { useEffect, useState } from "react";
-
-type Message = {
-  id: string;
-  content: string;
-  role: string;
-};
+import { useEffect} from "react";
 
 export default function ChatMessages({
   projectId,
@@ -25,7 +19,6 @@ export default function ChatMessages({
         `/api/message?projectId=${projectId}`
       );
       const data = await res.json();
-
       if (!res.ok) {
         console.error(data.error);
         return;

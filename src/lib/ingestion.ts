@@ -1,6 +1,9 @@
 import { prisma } from "@/lib/prisma";
 import { chromium } from "playwright";
 import { createEmbedding } from "./embedding";
+import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
+import { Readability } from "@mozilla/readability";
+import { JSDOM } from "jsdom";
 
 export async function processProject(projectId: string) {
   let browser;
@@ -38,7 +41,7 @@ export async function processProject(projectId: string) {
       waitUntil: "networkidle",
     });
 
-    console.log("✅ Page loaded");
+    console.log("✅ Main page loaded");
 
     // ==============================
     // 🔥 EXTRACT LINKS + TITLES
@@ -57,16 +60,9 @@ export async function processProject(projectId: string) {
         })
         .filter((item) => {
           if (!item.url || !item.title) return false;
-
-          // same domain only
           if (!item.url.startsWith(window.location.origin)) return false;
-
-          // remove anchors (#)
           if (item.url.includes("#")) return false;
-
-          // remove useless small text
           if (item.title.length < 2) return false;
-
           return true;
         });
     });
@@ -74,7 +70,7 @@ export async function processProject(projectId: string) {
     console.log("🔗 TOTAL RAW LINKS:", links.length);
 
     // ==============================
-    // 🔥 REMOVE DUPLICATES
+    // 🔥 UNIQUE LINKS
     // ==============================
     const uniqueMap = new Map<string, string>();
 
@@ -94,7 +90,7 @@ export async function processProject(projectId: string) {
     console.log("🔗 UNIQUE LINKS:", uniqueLinks.length);
 
     // ==============================
-    // 🔥 FILTER DOCS LINKS
+    // 🔥 FILTER DOC LINKS
     // ==============================
     const filteredLinks = uniqueLinks.filter((l) => {
       const link = l.url;
@@ -103,56 +99,78 @@ export async function processProject(projectId: string) {
         link.includes("/docs") &&
         !link.includes("blog") &&
         !link.includes("pricing") &&
-        !link.includes("sponsor") &&
         !link.includes("github") &&
-        !link.includes("twitter") &&
-        !link.includes("discord")
+        !link.includes("twitter")
       );
     });
 
-    console.log("✅ FILTERED DOC LINKS:", filteredLinks.length);
+    console.log("✅ FILTERED LINKS:", filteredLinks.length);
 
-    console.log("📄 SAMPLE:");
-    filteredLinks.slice(0, 20).forEach((l, i) => {
-      console.log(`${i + 1}. ${l.title} → ${l.url}`);
+    // ==============================
+    // 🔥 TEXT SPLITTER (LangChain)
+    // ==============================
+    const splitter = new RecursiveCharacterTextSplitter({
+      chunkSize: 800,
+      chunkOverlap: 150,
     });
 
     // ==============================
-    // 🔥 SAVE TO DB (IMPORTANT FIX)
+    // 🔥 LOOP LINKS → CONTENT → CHUNK → EMBED → SAVE
     // ==============================
-    for (const link of filteredLinks) {
-      await prisma.docLink.create({
-        data: {
-          projectId: project.id,
-          url: link.url,
-          title: link.title,
-        },
-      });
+    for (const link of filteredLinks.slice(0, 10)) {
+      console.log("➡️ Crawling:", link.url);
+
+      try {
+        await page.goto(link.url, {
+          waitUntil: "networkidle",
+        });
+
+        const html = await page.content();
+
+        const dom = new JSDOM(html, { url: link.url });
+        const reader = new Readability(dom.window.document);
+        const article = reader.parse();
+
+        if (!article) {
+          console.log("❌ No content");
+          continue;
+        }
+
+        const rawText = article.textContent || "";
+
+        if (!rawText || rawText.length < 200) {
+          console.log("⚠️ Skipping small content");
+          continue;
+        }
+
+        const cleanedText = rawText.replace(/\s+/g, " ").trim();
+
+        // 🔥 CHUNKING (LangChain)
+        const docs = await splitter.createDocuments([cleanedText]);
+
+        console.log(`📦 Chunks: ${docs.length}`);
+
+        // 🔥 SAVE CHUNKS + EMBEDDING
+        for (const doc of docs) {
+          const embedding = await createEmbedding(doc.pageContent);
+
+          await prisma.docChunk.create({
+            data: {
+              content: doc.pageContent,
+              embedding,
+              url: link.url,
+              title: link.title,
+              projectId,
+            },
+          });
+        }
+
+        console.log("✅ Saved:", link.title);
+
+      } catch (err) {
+        console.log("❌ Error in:", link.url);
+      }
     }
-
-    console.log("💾 Links saved to DocLink table");
-
-    const docs = await prisma.docLink.findMany({
-  where: { projectId: project.id },
-});
-
-    // ==============================
-    // 🔥 MARK READY
-    // ==============================
-console.log("🧠 Creating embeddings...");
-
-for (const doc of docs) {
-  const embedding = await createEmbedding(doc.title);
-
-  await prisma.docLink.update({
-    where: { id: doc.id },
-    data: {
-      embedding,
-    },
-  });
-
-  console.log("✅ Embedded:", doc.title.slice(0, 20));
-}
 
     // ==============================
     // 🔥 MARK READY
@@ -162,7 +180,7 @@ for (const doc of docs) {
       data: { status: "ready" },
     });
 
-    console.log("✅ Extraction complete");
+    console.log("🎉 INGESTION COMPLETE");
 
   } catch (error) {
     console.error("❌ INGESTION_ERROR:", error);

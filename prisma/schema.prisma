@@ -34,6 +34,7 @@ model Project {
   messages Message[]
   documents Document[]
   docLinks DocLink[]
+  chunks DocChunk[]
 }
 
 model DocLink {
@@ -51,6 +52,19 @@ model DocLink {
   project Project @relation(fields: [projectId], references: [id])
 
   @@index([projectId])
+}
+
+model DocChunk {
+  id        String   @id @default(cuid())
+  content   String
+  embedding Json?
+  url       String
+  title     String?
+
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id])
+
+  createdAt DateTime @default(now())
 }
 
 model Message {
