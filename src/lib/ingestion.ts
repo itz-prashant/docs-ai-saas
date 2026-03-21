@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { chromium } from "playwright";
+import { createEmbedding } from "./embedding";
 
 export async function processProject(projectId: string) {
   let browser;
@@ -130,6 +131,28 @@ export async function processProject(projectId: string) {
     }
 
     console.log("💾 Links saved to DocLink table");
+
+    const docs = await prisma.docLink.findMany({
+  where: { projectId: project.id },
+});
+
+    // ==============================
+    // 🔥 MARK READY
+    // ==============================
+console.log("🧠 Creating embeddings...");
+
+for (const doc of docs) {
+  const embedding = await createEmbedding(doc.title);
+
+  await prisma.docLink.update({
+    where: { id: doc.id },
+    data: {
+      embedding,
+    },
+  });
+
+  console.log("✅ Embedded:", doc.title.slice(0, 20));
+}
 
     // ==============================
     // 🔥 MARK READY
