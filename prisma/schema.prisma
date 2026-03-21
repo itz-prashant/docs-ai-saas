@@ -25,7 +25,7 @@ model Project {
   id        String   @id @default(cuid())
   title     String
   url       String
-  docsLinks Json?  
+  status    String   @default("pending") 
   createdAt DateTime @default(now())
 
   userId String
@@ -33,6 +33,24 @@ model Project {
 
   messages Message[]
   documents Document[]
+  docLinks DocLink[]
+}
+
+model DocLink {
+  id        String   @id @default(cuid())
+  projectId String
+
+  url       String
+  title     String
+
+  // 🔥 future use (embedding)
+  embedding Json?  
+
+  createdAt DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id])
+
+  @@index([projectId])
 }
 
 model Message {

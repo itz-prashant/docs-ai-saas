@@ -1,7 +1,5 @@
 import { prisma } from "@/lib/prisma";
 import { chromium } from "playwright";
-import { Readability } from "@mozilla/readability";
-import { JSDOM } from "jsdom";
 
 export async function processProject(projectId: string) {
   let browser;
@@ -9,6 +7,9 @@ export async function processProject(projectId: string) {
   try {
     console.log("🟡 Starting ingestion for project:", projectId);
 
+    // ==============================
+    // 🔥 GET PROJECT
+    // ==============================
     const project = await prisma.project.findUnique({
       where: { id: projectId },
     });
@@ -20,8 +21,14 @@ export async function processProject(projectId: string) {
 
     console.log("🌐 URL:", project.url);
 
+    // 🔥 mark processing
+    await prisma.project.update({
+      where: { id: projectId },
+      data: { status: "processing" },
+    });
+
     // ==============================
-    // 🔥 1. LAUNCH BROWSER
+    // 🔥 LAUNCH BROWSER
     // ==============================
     browser = await chromium.launch();
     const page = await browser.newPage();
@@ -33,72 +40,64 @@ export async function processProject(projectId: string) {
     console.log("✅ Page loaded");
 
     // ==============================
-    // 🔥 2. GET HTML
+    // 🔥 EXTRACT LINKS + TITLES
     // ==============================
-    const html = await page.content();
-
-    console.log("📄 HTML fetched (first 200 chars):");
-    console.log(html.slice(0, 200));
-
-    // ==============================
-    // 🔥 3. READABILITY EXTRACTION
-    // ==============================
-    const dom = new JSDOM(html, {
-      url: project.url,
-    });
-
-    const reader = new Readability(dom.window.document);
-    const article = reader.parse();
-
-    if (!article) {
-      console.log("❌ Readability failed");
-    } else {
-      console.log("🧠 Article title:", article.title);
-
-      const rawText = article.textContent || "";
-
-      console.log("📏 Raw text length:", rawText.length);
-
-      const cleanedText = rawText
-        .replace(/\s+/g, " ")
-        .trim()
-        .slice(0, 50000);
-
-      console.log("🧹 CLEAN TEXT (first 300 chars):");
-      console.log(cleanedText.slice(0, 300));
-
-      console.log("📏 Cleaned text length:", cleanedText.length);
-    }
-
-    // ==============================
-    // 🔥 4. LINK EXTRACTION
-    // ==============================
-    const links: string[] = await page.evaluate(() => {
+    const links = await page.evaluate(() => {
       const anchors = Array.from(document.querySelectorAll("a"));
 
       return anchors
-        .map((a) => (a as HTMLAnchorElement).href)
-        .filter((href) => {
-          if (!href) return false;
+        .map((a) => {
+          const el = a as HTMLAnchorElement;
+
+          return {
+            url: el.href,
+            title: el.innerText?.trim(),
+          };
+        })
+        .filter((item) => {
+          if (!item.url || !item.title) return false;
 
           // same domain only
-          if (!href.startsWith(window.location.origin)) return false;
+          if (!item.url.startsWith(window.location.origin)) return false;
 
-          // remove anchors
-          if (href.includes("#")) return false;
+          // remove anchors (#)
+          if (item.url.includes("#")) return false;
+
+          // remove useless small text
+          if (item.title.length < 2) return false;
 
           return true;
         });
     });
 
-    const uniqueLinks = Array.from(new Set(links));
-
-    console.log("🔗 TOTAL LINKS FOUND:", uniqueLinks.length);
+    console.log("🔗 TOTAL RAW LINKS:", links.length);
 
     // ==============================
-    // 🔥 5. FILTER DOCS LINKS (NEW STEP)
+    // 🔥 REMOVE DUPLICATES
     // ==============================
-    const filteredLinks = uniqueLinks.filter((link) => {
+    const uniqueMap = new Map<string, string>();
+
+    links.forEach((l) => {
+      if (!uniqueMap.has(l.url)) {
+        uniqueMap.set(l.url, l.title);
+      }
+    });
+
+    const uniqueLinks = Array.from(uniqueMap.entries()).map(
+      ([url, title]) => ({
+        url,
+        title,
+      })
+    );
+
+    console.log("🔗 UNIQUE LINKS:", uniqueLinks.length);
+
+    // ==============================
+    // 🔥 FILTER DOCS LINKS
+    // ==============================
+    const filteredLinks = uniqueLinks.filter((l) => {
+      const link = l.url;
+
       return (
         link.includes("/docs") &&
         !link.includes("blog") &&
@@ -112,22 +111,33 @@ export async function processProject(projectId: string) {
 
     console.log("✅ FILTERED DOC LINKS:", filteredLinks.length);
 
-    console.log("📄 FILTERED SAMPLE:");
-    filteredLinks.slice(0, 20).forEach((link, i) => {
-      console.log(`${i + 1}. ${link}`);
+    console.log("📄 SAMPLE:");
+    filteredLinks.slice(0, 20).forEach((l, i) => {
+      console.log(`${i + 1}. ${l.title} → ${l.url}`);
     });
 
     // ==============================
-    // 🔥 6. SAVE TO DB (NEW STEP)
+    // 🔥 SAVE TO DB (IMPORTANT FIX)
+    // ==============================
+    for (const link of filteredLinks) {
+      await prisma.docLink.create({
+        data: {
+          projectId: project.id,
+          url: link.url,
+          title: link.title,
+        },
+      });
+    }
+
+    console.log("💾 Links saved to DocLink table");
+
+    // ==============================
+    // 🔥 MARK READY
     // ==============================
     await prisma.project.update({
       where: { id: projectId },
-      data: {
-        docsLinks: filteredLinks,
-      },
+      data: { status: "ready" },
     });
-
-    console.log("💾 Docs links saved to DB");
 
     console.log("✅ Extraction complete");
 
